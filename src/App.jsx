@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import Lenis from 'lenis';
+import MaiaChat from './MaiaChat';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -607,25 +608,8 @@ export default function App() {
             <p style={css('font-size:16px;color:rgba(26,26,46,0.65);margin:0;max-width:46ch;margin-inline:auto')}>Tell Maia what you're looking for. She'll estimate your treatment and connect you with your clinic — no waiting rooms required.</p>
           </div>
 
-          <div data-reveal="" style={css('opacity:0;transform:translateY(28px);border-radius:24px;background:rgba(232,248,245,0.6);backdrop-filter:blur(16px);border:1px solid rgba(0,168,150,0.15);overflow:hidden;box-shadow:0 30px 80px rgba(26,26,46,0.12)')}>
-            <div style={css('display:flex;align-items:center;gap:12px;padding:20px 26px;border-bottom:1px solid rgba(26,26,46,0.08)')}>
-              <div style={css("width:34px;height:34px;border-radius:50%;background:#00A896;display:flex;align-items:center;justify-content:center;font-family:'Neue Haas Grotesk Display Pro','Inter','Helvetica Neue',Arial,sans-serif;font-weight:500;font-size:15px;color:#fff")}>M</div>
-              <div>
-                <div style={css('font-size:14px;font-weight:600;color:#1A1A2E')}>Maia</div>
-                <div style={css('font-size:12px;color:#1f9d5c;display:flex;align-items:center;gap:6px')}><span style={css('width:6px;height:6px;border-radius:50%;background:#1f9d5c;display:inline-block')} />Online now</div>
-              </div>
-            </div>
-
-            <div style={css('padding:28px 26px;display:flex;flex-direction:column;gap:16px;min-height:180px')}>
-              <div style={css('align-self:flex-start;max-width:80%;background:rgba(26,26,46,0.06);padding:14px 18px;border-radius:16px 16px 16px 4px;font-size:14.5px;line-height:1.55;color:rgba(26,26,46,0.85)')}>Hi, I'm Maia 👋 What's bringing you to Smile &amp; Escape — veneers, implants, a full smile makeover?</div>
-              <div style={css('align-self:flex-end;max-width:80%;background:#00A896;padding:14px 18px;border-radius:16px 16px 4px 16px;font-size:14.5px;line-height:1.55;color:#fff')}>I want veneers and a beach vacation 😊</div>
-              <div style={css('align-self:flex-start;max-width:80%;background:rgba(26,26,46,0.06);padding:14px 18px;border-radius:16px 16px 16px 4px;font-size:14.5px;line-height:1.55;color:rgba(26,26,46,0.85)')}>Perfect — that sounds like Paradise Escape. Let's get you an estimate.</div>
-            </div>
-
-            <div style={css('padding:20px 26px 26px;display:flex;gap:12px;border-top:1px solid rgba(26,26,46,0.08)')}>
-              <div style={css('flex:1;padding:14px 18px;border-radius:100px;background:rgba(26,26,46,0.05);color:rgba(26,26,46,0.4);font-size:14px')}>Type your message to Maia…</div>
-              <button style={css('width:48px;height:48px;border-radius:50%;background:#00A896;border:none;color:#fff;font-size:18px;flex-shrink:0')}>→</button>
-            </div>
+          <div data-reveal="" style={css('opacity:0;transform:translateY(28px)')}>
+            <MaiaChat isMobile={isMobile} />
           </div>
 
           <div data-reveal="" style={css('opacity:0;transform:translateY(28px);text-align:center;margin-top:44px')}>

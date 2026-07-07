@@ -36,6 +36,28 @@ a:hover {
   }
 }
 
+/* "Maia está escribiendo..." typing indicator dots */
+.maia-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #2ec4b6;
+  display: inline-block;
+  animation: maiaBlink 1.2s infinite ease-in-out;
+}
+@keyframes maiaBlink {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
 /* Lenis smooth-scroll requirements */
 html.lenis,
 html.lenis body {
