@@ -98,8 +98,27 @@ const REASONS = [
   { stat: '★', title: 'Pura Vida recovery', desc: 'Heal on the beach, not in a waiting room — Costa Rica turns treatment into a getaway.' },
 ];
 
+/* ------------------------------------------------------------------ *
+ * Breakpoint hook: the layout is inline-styled with no media queries,
+ * so responsive branches are driven from JS instead.
+ * ------------------------------------------------------------------ */
+function useMediaQuery(query) {
+  const [matches, setMatches] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(query).matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const handler = (e) => setMatches(e.matches);
+    setMatches(mq.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, [query]);
+  return matches;
+}
+
 export default function App() {
   const [activeFilter, setActiveFilter] = useState('all');
+  const isMobile = useMediaQuery('(max-width: 768px)');
 
   const refs = {
     root: useRef(null),
@@ -155,16 +174,16 @@ export default function App() {
     const roots = grid.querySelectorAll('[data-slider-root]');
 
     roots.forEach((root) => {
-      const beforeMask = root.querySelector('[data-slider-before]');
-      const beforeImg = beforeMask ? beforeMask.querySelector('img') : null;
+      const beforeImg = root.querySelector('[data-slider-before]');
       const handle = root.querySelector('[data-slider-handle]');
       const id = root.getAttribute('data-case-id');
 
       const setPct = (pct) => {
         pct = Math.max(0, Math.min(100, pct));
         S.sliderPositions[id] = pct;
-        if (beforeMask) beforeMask.style.width = pct + '%';
-        if (beforeImg) beforeImg.style.width = root.clientWidth + 'px';
+        // Both images are full-size; reveal the "before" from the left up to
+        // `pct` by clipping the rest. Resize-proof — no width syncing needed.
+        if (beforeImg) beforeImg.style.clipPath = `inset(0 ${100 - pct}% 0 0)`;
         if (handle) handle.style.left = pct + '%';
       };
 
@@ -421,8 +440,8 @@ export default function App() {
 
       {/* TEAM CAROUSEL */}
       <section style={css('position:relative;padding:120px 0 130px;overflow:hidden;background:#F8FFFE')}>
-        <div style={css('display:flex;align-items:flex-start;gap:64px;max-width:1400px;margin:0 auto;padding:0 48px')}>
-          <div data-reveal="" style={css('opacity:0;transform:translateY(28px);flex:0 0 320px;position:sticky;top:140px')}>
+        <div style={css(`display:flex;align-items:flex-start;gap:${isMobile ? '36px' : '64px'};max-width:1400px;margin:0 auto;padding:0 ${isMobile ? '24px' : '48px'}${isMobile ? ';flex-direction:column' : ''}`)}>
+          <div data-reveal="" style={css(`opacity:0;transform:translateY(28px);flex:${isMobile ? '0 0 auto' : '0 0 320px'};${isMobile ? 'width:100%;max-width:420px' : 'position:sticky;top:140px'}`)}>
             <div style={css('display:flex;align-items:center;gap:14px;margin-bottom:22px')}>
               <div style={css('display:flex')}>
                 <div style={css('width:34px;height:34px;border-radius:50%;background:#00A896;border:2px solid #F8FFFE;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:600')}>😊</div>
@@ -438,7 +457,7 @@ export default function App() {
             <a href="#maia" style={css('display:inline-flex;align-items:center;gap:10px;background:#1A1A2E;color:#fff;font-weight:600;font-size:14px;padding:14px 26px;border-radius:100px')}>Meet the Team <span>→</span></a>
           </div>
 
-          <div style={css('flex:1;min-width:0;position:relative;overflow:hidden;-webkit-mask-image:linear-gradient(90deg, transparent 0, #000 110px, #000 100%);mask-image:linear-gradient(90deg, transparent 0, #000 110px, #000 100%)')}>
+          <div style={css(`flex:1;min-width:0;position:relative;overflow:hidden;${isMobile ? 'width:100%;' : ''}-webkit-mask-image:linear-gradient(90deg, transparent 0, #000 ${isMobile ? '40px' : '110px'}, #000 100%);mask-image:linear-gradient(90deg, transparent 0, #000 ${isMobile ? '40px' : '110px'}, #000 100%)`)}>
             <div ref={refs.carouselTrack} style={css('display:flex;gap:24px;width:max-content')}>
               {TEAM_MEMBERS.map((mem, i) => (
                 <div key={i} style={css('flex:0 0 220px;border-radius:20px;overflow:hidden;box-shadow:0 12px 30px rgba(26,26,46,0.08);background:#fff')}>
@@ -486,9 +505,7 @@ export default function App() {
             >
               <div data-slider-root="" data-case-id={c.id} style={css('position:relative;width:100%;aspect-ratio:4/3;overflow:hidden;user-select:none;touch-action:none;cursor:ew-resize')}>
                 <img src={c.after} draggable="false" alt={`${c.title} after`} style={css('position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none')} />
-                <div data-slider-before="" style={css('position:absolute;inset:0;width:50%;height:100%;overflow:hidden')}>
-                  <img src={c.before} draggable="false" alt={`${c.title} before`} style={css('position:absolute;top:0;left:0;width:400px;height:100%;object-fit:cover;pointer-events:none')} />
-                </div>
+                <img data-slider-before="" src={c.before} draggable="false" alt={`${c.title} before`} style={css('position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;clip-path:inset(0 50% 0 0)')} />
                 <div style={css('position:absolute;top:14px;left:14px;background:rgba(26,26,46,0.55);color:#fff;font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;padding:5px 12px;border-radius:100px;backdrop-filter:blur(4px)')}>Before</div>
                 <div style={css('position:absolute;top:14px;right:14px;background:rgba(0,168,150,0.85);color:#fff;font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;padding:5px 12px;border-radius:100px;backdrop-filter:blur(4px)')}>After</div>
                 <div data-slider-handle="" style={css('position:absolute;top:0;bottom:0;left:50%;width:0;display:flex;align-items:center;justify-content:center;pointer-events:none')}>
