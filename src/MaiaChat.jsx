@@ -3,56 +3,92 @@ import React, { useEffect, useRef, useState } from 'react';
 const TEAL = '#2EC4B6';
 const BORDER = '#e5e7eb';
 
-// Maia's opening message (STEP 1 of maia_agent.yaml, Spanish default), shown
-// automatically on load. Display-only — it is not sent to the API (the Messages
-// API history must start with a user turn).
-const WELCOME = `¡Hola! Soy Maia 🦷✨ Bienvenido a Smile & Escape.
+// n8n webhooks that bridge to the Maia Managed Agent. These are public
+// endpoints (no secret) — the Anthropic key lives inside n8n, never here.
+const START_URL = 'https://n8n.srv1587395.hstgr.cloud/webhook/bb-agent-start';
+const CHAT_URL = 'https://n8n.srv1587395.hstgr.cloud/webhook/bb-agent-chat';
+const AGENT_ID = 'agent_01Gaqnw9j3mq5qYqcNY73GG9';
 
-Soy una asistente con inteligencia artificial — lo que significa que puedo entenderte, acompañarte y guiarte durante todo el proceso de forma inteligente y personalizada, disponible para ti en cualquier momento.
+const INIT_ERROR = 'No pudimos conectar con Maia. Por favor recarga la página.';
+const CHAT_ERROR = 'Maia tuvo un problema. Por favor intenta de nuevo.';
 
-Somos una plataforma de turismo médico-dental en Costa Rica. Conectamos a personas como tú con Prisma Dental, una clínica especializada en tratamientos de alta calidad — y además nos encargamos de que tu estadía sea una experiencia completa: alojamiento, transporte y todo lo que necesitas para que te sientas tranquilo y bien atendido desde que llegas.
-
-Cuéntame — ¿qué te trajo por aquí hoy? 😊`;
-
-const ERROR_MESSAGE =
-  'Ups, algo salió mal. Por favor intentá de nuevo en un momento. · Oops, something went wrong. Please try again in a moment.';
+async function postJSON(url, body) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`bad_status_${res.status}`);
+  return res.json();
+}
 
 export default function MaiaChat({ isMobile = false }) {
-  const [messages, setMessages] = useState([{ role: 'assistant', content: WELCOME }]);
+  const [messages, setMessages] = useState([]);
+  const [sessionId, setSessionId] = useState(null);
   const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [initializing, setInitializing] = useState(true);
+  const [initFailed, setInitFailed] = useState(false);
+  const [loading, setLoading] = useState(false); // Maia typing (post-init)
+  const lastAgentMsgId = useRef(null);
+  const startedRef = useRef(false); // guard against a double init
   const endRef = useRef(null);
 
-  // Auto-scroll to the latest message (and while Maia is typing).
+  // Auto-scroll to the latest message (and while Maia is typing / connecting).
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages, loading]);
+  }, [messages, loading, initializing]);
+
+  // On mount: open a session, then ask Maia for her welcome via the Chat webhook.
+  useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+
+    (async () => {
+      try {
+        const start = await postJSON(START_URL, { agent_id: AGENT_ID });
+        if (!start?.session_id) throw new Error('no_session_id');
+        setSessionId(start.session_id);
+
+        // Maia sends the welcome automatically by replying to "hola".
+        const welcome = await postJSON(CHAT_URL, {
+          session_id: start.session_id,
+          message: 'hola',
+        });
+        lastAgentMsgId.current = welcome?.lastAgentMsgId ?? null;
+        setMessages([{ role: 'assistant', content: welcome?.reply ?? CHAT_ERROR }]);
+      } catch {
+        // If we never got a session, the chat can't work at all → hard error.
+        // If the session opened but the welcome failed, still let the user try.
+        setSessionId((sid) => {
+          if (!sid) setInitFailed(true);
+          else setMessages([{ role: 'assistant', content: CHAT_ERROR }]);
+          return sid;
+        });
+      } finally {
+        setInitializing(false);
+      }
+    })();
+  }, []);
 
   const send = async () => {
     const text = input.trim();
-    if (!text || loading) return;
+    if (!text || loading || !sessionId) return;
 
-    const nextMessages = [...messages, { role: 'user', content: text }];
-    setMessages(nextMessages);
+    setMessages((m) => [...m, { role: 'user', content: text }]);
     setInput('');
     setLoading(true);
 
     try {
-      // Drop the leading welcome (assistant) message so the API history starts
-      // with a user turn, as the Messages API requires.
-      const apiMessages = nextMessages.filter(
-        (m, i) => !(i === 0 && m.role === 'assistant')
-      );
-      const res = await fetch('/api/maia', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: apiMessages }),
+      const data = await postJSON(CHAT_URL, {
+        session_id: sessionId,
+        message: text,
+        // Saved from the previous reply so n8n can thread the conversation.
+        lastAgentMsgId: lastAgentMsgId.current ?? undefined,
       });
-      if (!res.ok) throw new Error('bad_status');
-      const data = await res.json();
-      setMessages((m) => [...m, { role: 'assistant', content: data.text }]);
+      lastAgentMsgId.current = data?.lastAgentMsgId ?? lastAgentMsgId.current;
+      setMessages((m) => [...m, { role: 'assistant', content: data?.reply ?? CHAT_ERROR }]);
     } catch {
-      setMessages((m) => [...m, { role: 'assistant', content: ERROR_MESSAGE }]);
+      setMessages((m) => [...m, { role: 'assistant', content: CHAT_ERROR }]);
     } finally {
       setLoading(false);
     }
@@ -66,6 +102,7 @@ export default function MaiaChat({ isMobile = false }) {
   };
 
   const height = isMobile ? 400 : 600;
+  const inputDisabled = initializing || initFailed || !sessionId;
 
   return (
     <div
@@ -127,36 +164,72 @@ export default function MaiaChat({ isMobile = false }) {
           gap: 14,
         }}
       >
-        {messages.map((m, i) => (
+        {initFailed ? (
           <div
-            key={i}
             style={{
-              alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+              alignSelf: 'flex-start',
               maxWidth: '82%',
               padding: '12px 16px',
+              background: '#fff',
+              border: `1px solid ${BORDER}`,
+              borderRadius: '16px 16px 16px 4px',
               fontSize: 14.5,
               lineHeight: 1.55,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              ...(m.role === 'user'
-                ? {
-                    background: TEAL,
-                    color: '#fff',
-                    borderRadius: '16px 16px 4px 16px',
-                  }
-                : {
-                    background: '#fff',
-                    color: 'rgba(26,26,46,0.85)',
-                    border: `1px solid ${BORDER}`,
-                    borderRadius: '16px 16px 16px 4px',
-                  }),
+              color: 'rgba(26,26,46,0.85)',
             }}
           >
-            {m.content}
+            {INIT_ERROR}
           </div>
-        ))}
+        ) : initializing ? (
+          <div
+            style={{
+              margin: 'auto',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 13.5,
+              color: 'rgba(26,26,46,0.5)',
+            }}
+          >
+            <span>Conectando con Maia</span>
+            <span style={{ display: 'inline-flex', gap: 3 }}>
+              <span className="maia-dot" />
+              <span className="maia-dot" style={{ animationDelay: '0.2s' }} />
+              <span className="maia-dot" style={{ animationDelay: '0.4s' }} />
+            </span>
+          </div>
+        ) : (
+          messages.map((m, i) => (
+            <div
+              key={i}
+              style={{
+                alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+                maxWidth: '82%',
+                padding: '12px 16px',
+                fontSize: 14.5,
+                lineHeight: 1.55,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                ...(m.role === 'user'
+                  ? {
+                      background: TEAL,
+                      color: '#fff',
+                      borderRadius: '16px 16px 4px 16px',
+                    }
+                  : {
+                      background: '#fff',
+                      color: 'rgba(26,26,46,0.85)',
+                      border: `1px solid ${BORDER}`,
+                      borderRadius: '16px 16px 16px 4px',
+                    }),
+              }}
+            >
+              {m.content}
+            </div>
+          ))
+        )}
 
-        {loading && (
+        {loading && !initializing && (
           <div
             style={{
               alignSelf: 'flex-start',
@@ -199,7 +272,8 @@ export default function MaiaChat({ isMobile = false }) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder="Escribe tu mensaje..."
+          disabled={inputDisabled}
+          placeholder={inputDisabled ? 'Conectando con Maia...' : 'Escribe tu mensaje...'}
           aria-label="Escribe tu mensaje para Maia"
           style={{
             flex: 1,
@@ -214,7 +288,7 @@ export default function MaiaChat({ isMobile = false }) {
         />
         <button
           onClick={send}
-          disabled={loading || !input.trim()}
+          disabled={loading || inputDisabled || !input.trim()}
           aria-label="Enviar mensaje"
           style={{
             width: 46,
@@ -225,8 +299,8 @@ export default function MaiaChat({ isMobile = false }) {
             color: '#fff',
             fontSize: 18,
             flexShrink: 0,
-            cursor: loading || !input.trim() ? 'default' : 'pointer',
-            opacity: loading || !input.trim() ? 0.55 : 1,
+            cursor: loading || inputDisabled || !input.trim() ? 'default' : 'pointer',
+            opacity: loading || inputDisabled || !input.trim() ? 0.55 : 1,
             transition: 'opacity 0.2s ease',
           }}
         >
