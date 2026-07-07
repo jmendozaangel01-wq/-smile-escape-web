@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---- Base reset (ported from the original standalone build) ---- */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #f8fffe;
+  color: #1a1a2e;
+  font-family: 'Neue Haas Grotesk Display Pro', 'Inter', 'Helvetica Neue', Arial, sans-serif;
+}
+* {
+  box-sizing: border-box;
+}
+::selection {
+  background: #00a896;
+  color: #fff;
+}
+a {
+  color: #00a896;
+  text-decoration: none;
+}
+a:hover {
+  color: #007566;
+}
+
+@keyframes floatSlow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-14px);
+  }
+}
+
+/* Lenis smooth-scroll requirements */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
