@@ -15,18 +15,8 @@ const AGENT_ID = 'agent_01Gaqnw9j3mq5qYqcNY73GG9';
 const STORE_KEY = 'smileMaiaChat';
 const SESSION_TTL_MS = 30 * 60 * 1000;
 
-// Maia's opening message (STEP 1 of maia_agent.yaml, Spanish default). Shown as
-// static text — NOT an agent call — so merely loading the page costs nothing.
-// The managed-agent session is only created on the user's first real message.
-const WELCOME = `¡Hola! Soy Maia 🦷✨ Bienvenido a Smile & Escape.
-
-Soy una asistente con inteligencia artificial — lo que significa que puedo entenderte, acompañarte y guiarte durante todo el proceso de forma inteligente y personalizada, disponible para ti en cualquier momento.
-
-Somos una plataforma de turismo médico-dental en Costa Rica. Conectamos a personas como tú con Prisma Dental, una clínica especializada en tratamientos de alta calidad — y además nos encargamos de que tu estadía sea una experiencia completa: alojamiento, transporte y todo lo que necesitas para que te sientas tranquilo y bien atendido desde que llegas.
-
-Cuéntame — ¿qué te trajo por aquí hoy? 😊`;
-
 const CHAT_ERROR = 'Maia tuvo un problema. Por favor intenta de nuevo.';
+const START_ERROR = 'No pudimos iniciar el chat. Intentá de nuevo.';
 
 async function postJSON(url, body) {
   const res = await fetch(url, {
@@ -50,17 +40,30 @@ function readStore() {
   }
 }
 
+function Dots() {
+  return (
+    <span style={{ display: 'inline-flex', gap: 3 }}>
+      <span className="maia-dot" />
+      <span className="maia-dot" style={{ animationDelay: '0.2s' }} />
+      <span className="maia-dot" style={{ animationDelay: '0.4s' }} />
+    </span>
+  );
+}
+
 export default function MaiaChat({ isMobile = false }) {
   const restored = useMemo(readStore, []);
 
-  const [messages, setMessages] = useState(
-    restored?.messages ?? [{ role: 'assistant', content: WELCOME }]
-  );
+  const [messages, setMessages] = useState(restored?.messages ?? []);
   const [sessionId, setSessionId] = useState(restored?.sessionId ?? null);
   const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [starting, setStarting] = useState(false); // opening the session
+  const [startError, setStartError] = useState(false);
+  const [loading, setLoading] = useState(false); // Maia typing
   const lastAgentMsgId = useRef(restored?.lastAgentMsgId ?? null);
   const scrollRef = useRef(null);
+
+  // The chat is "live" once a session exists (fresh click or restored reload).
+  const hasStarted = sessionId !== null;
 
   // Auto-scroll the INNER container only (never the page).
   useEffect(() => {
@@ -80,26 +83,40 @@ export default function MaiaChat({ isMobile = false }) {
     }
   }, [messages, sessionId]);
 
+  // User clicked "Iniciar chat": open the session and let Maia send her real
+  // welcome. Nothing hits the managed agent until this deliberate click.
+  const startChat = async () => {
+    if (starting) return;
+    setStarting(true);
+    setStartError(false);
+    try {
+      const start = await postJSON(START_URL, { agent_id: AGENT_ID });
+      const sid = start?.session_id;
+      if (!sid) throw new Error('no_session_id');
+
+      // "hola" elicits Maia's own STEP 1 welcome (not shown as a user bubble).
+      const welcome = await postJSON(CHAT_URL, { session_id: sid, message: 'hola' });
+      lastAgentMsgId.current = welcome?.lastAgentMsgId ?? null;
+      setSessionId(sid);
+      setMessages([{ role: 'assistant', content: welcome?.reply ?? CHAT_ERROR }]);
+    } catch {
+      setStartError(true);
+    } finally {
+      setStarting(false);
+    }
+  };
+
   const send = async () => {
     const text = input.trim();
-    if (!text || loading) return;
+    if (!text || loading || !sessionId) return;
 
     setMessages((m) => [...m, { role: 'user', content: text }]);
     setInput('');
     setLoading(true);
 
     try {
-      // Lazily open a session on the first real message (reused afterwards).
-      let sid = sessionId;
-      if (!sid) {
-        const start = await postJSON(START_URL, { agent_id: AGENT_ID });
-        if (!start?.session_id) throw new Error('no_session_id');
-        sid = start.session_id;
-        setSessionId(sid);
-      }
-
       const data = await postJSON(CHAT_URL, {
-        session_id: sid,
+        session_id: sessionId,
         message: text,
         lastAgentMsgId: lastAgentMsgId.current ?? undefined,
       });
@@ -169,8 +186,8 @@ export default function MaiaChat({ isMobile = false }) {
         </div>
       </div>
 
-      {/* Messages (internal scroll). data-lenis-prevent stops the page's Lenis
-          smooth-scroll from hijacking the wheel/touch inside this container. */}
+      {/* Body. data-lenis-prevent stops the page's Lenis smooth-scroll from
+          hijacking the wheel/touch inside this container. */}
       <div
         ref={scrollRef}
         data-lenis-prevent=""
@@ -186,110 +203,168 @@ export default function MaiaChat({ isMobile = false }) {
           gap: 14,
         }}
       >
-        {messages.map((m, i) => (
+        {!hasStarted ? (
+          // Pre-start: a deliberate "Iniciar chat" gate — no session yet.
           <div
-            key={i}
             style={{
-              alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-              maxWidth: '82%',
-              padding: '12px 16px',
-              fontSize: 14.5,
-              lineHeight: 1.55,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              ...(m.role === 'user'
-                ? {
+              margin: 'auto',
+              textAlign: 'center',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 18,
+              padding: '0 12px',
+            }}
+          >
+            <div
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: '50%',
+                background: TEAL,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 26,
+              }}
+            >
+              🦷
+            </div>
+            <div style={{ fontSize: 15, color: 'rgba(26,26,46,0.6)', maxWidth: '32ch', lineHeight: 1.55 }}>
+              Chatea con Maia, tu asistente de sonrisa con IA. Te ayuda a planear tu tratamiento — cuando quieras.
+            </div>
+            {starting ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: 'rgba(26,26,46,0.5)' }}>
+                <span>Conectando con Maia</span>
+                <Dots />
+              </div>
+            ) : (
+              <>
+                {startError && <div style={{ fontSize: 13, color: '#c0392b' }}>{START_ERROR}</div>}
+                <button
+                  onClick={startChat}
+                  style={{
                     background: TEAL,
                     color: '#fff',
-                    borderRadius: '16px 16px 4px 16px',
-                  }
-                : {
-                    background: '#fff',
-                    color: 'rgba(26,26,46,0.85)',
-                    border: `1px solid ${BORDER}`,
-                    borderRadius: '16px 16px 16px 4px',
-                  }),
-            }}
-          >
-            {m.content}
+                    border: 'none',
+                    borderRadius: 100,
+                    padding: '14px 30px',
+                    fontSize: 15,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Iniciar chat con Maia
+                </button>
+              </>
+            )}
           </div>
-        ))}
+        ) : (
+          <>
+            {messages.map((m, i) => (
+              <div
+                key={i}
+                style={{
+                  alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+                  maxWidth: '82%',
+                  padding: '12px 16px',
+                  fontSize: 14.5,
+                  lineHeight: 1.55,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  ...(m.role === 'user'
+                    ? {
+                        background: TEAL,
+                        color: '#fff',
+                        borderRadius: '16px 16px 4px 16px',
+                      }
+                    : {
+                        background: '#fff',
+                        color: 'rgba(26,26,46,0.85)',
+                        border: `1px solid ${BORDER}`,
+                        borderRadius: '16px 16px 16px 4px',
+                      }),
+                }}
+              >
+                {m.content}
+              </div>
+            ))}
 
-        {loading && (
-          <div
-            style={{
-              alignSelf: 'flex-start',
-              maxWidth: '82%',
-              padding: '12px 16px',
-              background: '#fff',
-              border: `1px solid ${BORDER}`,
-              borderRadius: '16px 16px 16px 4px',
-              fontSize: 13.5,
-              color: 'rgba(26,26,46,0.55)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            <span>Maia está escribiendo</span>
-            <span style={{ display: 'inline-flex', gap: 3 }}>
-              <span className="maia-dot" />
-              <span className="maia-dot" style={{ animationDelay: '0.2s' }} />
-              <span className="maia-dot" style={{ animationDelay: '0.4s' }} />
-            </span>
-          </div>
+            {loading && (
+              <div
+                style={{
+                  alignSelf: 'flex-start',
+                  maxWidth: '82%',
+                  padding: '12px 16px',
+                  background: '#fff',
+                  border: `1px solid ${BORDER}`,
+                  borderRadius: '16px 16px 16px 4px',
+                  fontSize: 13.5,
+                  color: 'rgba(26,26,46,0.55)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <span>Maia está escribiendo</span>
+                <Dots />
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      {/* Input */}
-      <div
-        style={{
-          display: 'flex',
-          gap: 12,
-          padding: '16px 22px',
-          borderTop: `1px solid ${BORDER}`,
-          flexShrink: 0,
-        }}
-      >
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder="Escribe tu mensaje..."
-          aria-label="Escribe tu mensaje para Maia"
+      {/* Input — only once the chat has started. */}
+      {hasStarted && (
+        <div
           style={{
-            flex: 1,
-            padding: '13px 18px',
-            borderRadius: 100,
-            border: `1px solid ${BORDER}`,
-            background: 'rgba(26,26,46,0.03)',
-            fontSize: 14,
-            color: '#1A1A2E',
-            outline: 'none',
-          }}
-        />
-        <button
-          onClick={send}
-          disabled={loading || !input.trim()}
-          aria-label="Enviar mensaje"
-          style={{
-            width: 46,
-            height: 46,
-            borderRadius: '50%',
-            background: TEAL,
-            border: 'none',
-            color: '#fff',
-            fontSize: 18,
+            display: 'flex',
+            gap: 12,
+            padding: '16px 22px',
+            borderTop: `1px solid ${BORDER}`,
             flexShrink: 0,
-            cursor: loading || !input.trim() ? 'default' : 'pointer',
-            opacity: loading || !input.trim() ? 0.55 : 1,
-            transition: 'opacity 0.2s ease',
           }}
         >
-          →
-        </button>
-      </div>
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder="Escribe tu mensaje..."
+            aria-label="Escribe tu mensaje para Maia"
+            style={{
+              flex: 1,
+              padding: '13px 18px',
+              borderRadius: 100,
+              border: `1px solid ${BORDER}`,
+              background: 'rgba(26,26,46,0.03)',
+              fontSize: 14,
+              color: '#1A1A2E',
+              outline: 'none',
+            }}
+          />
+          <button
+            onClick={send}
+            disabled={loading || !input.trim()}
+            aria-label="Enviar mensaje"
+            style={{
+              width: 46,
+              height: 46,
+              borderRadius: '50%',
+              background: TEAL,
+              border: 'none',
+              color: '#fff',
+              fontSize: 18,
+              flexShrink: 0,
+              cursor: loading || !input.trim() ? 'default' : 'pointer',
+              opacity: loading || !input.trim() ? 0.55 : 1,
+              transition: 'opacity 0.2s ease',
+            }}
+          >
+            →
+          </button>
+        </div>
+      )}
     </div>
   );
 }
