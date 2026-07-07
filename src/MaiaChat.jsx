@@ -5,8 +5,8 @@ const BORDER = '#e5e7eb';
 
 // n8n webhooks that bridge to the Maia Managed Agent. These are public
 // endpoints (no secret) — the Anthropic key lives inside n8n, never here.
-const START_URL = 'https://n8n.srv1587395.hstgr.cloud/webhook/bb-agent-start';
-const CHAT_URL = 'https://n8n.srv1587395.hstgr.cloud/webhook/bb-agent-chat';
+const START_URL = 'https://n8n.srv1587395.hstgr.cloud/webhook/smile-maia-start';
+const CHAT_URL = 'https://n8n.srv1587395.hstgr.cloud/webhook/smile-maia-chat';
 const AGENT_ID = 'agent_01Gaqnw9j3mq5qYqcNY73GG9';
 
 const INIT_ERROR = 'No pudimos conectar con Maia. Por favor recarga la página.';
