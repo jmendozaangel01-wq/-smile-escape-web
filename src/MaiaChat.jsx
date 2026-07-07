@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 const TEAL = '#2EC4B6';
 const BORDER = '#e5e7eb';
@@ -9,7 +9,23 @@ const START_URL = 'https://n8n.srv1587395.hstgr.cloud/webhook/smile-maia-start';
 const CHAT_URL = 'https://n8n.srv1587395.hstgr.cloud/webhook/smile-maia-chat';
 const AGENT_ID = 'agent_01Gaqnw9j3mq5qYqcNY73GG9';
 
-const INIT_ERROR = 'No pudimos conectar con Maia. Por favor recarga la página.';
+// Persist the session + transcript per browser tab so a reload REUSES the same
+// managed-agent session instead of spawning a new one. Expires after 30 min so
+// a stale session doesn't get reused forever.
+const STORE_KEY = 'smileMaiaChat';
+const SESSION_TTL_MS = 30 * 60 * 1000;
+
+// Maia's opening message (STEP 1 of maia_agent.yaml, Spanish default). Shown as
+// static text — NOT an agent call — so merely loading the page costs nothing.
+// The managed-agent session is only created on the user's first real message.
+const WELCOME = `¡Hola! Soy Maia 🦷✨ Bienvenido a Smile & Escape.
+
+Soy una asistente con inteligencia artificial — lo que significa que puedo entenderte, acompañarte y guiarte durante todo el proceso de forma inteligente y personalizada, disponible para ti en cualquier momento.
+
+Somos una plataforma de turismo médico-dental en Costa Rica. Conectamos a personas como tú con Prisma Dental, una clínica especializada en tratamientos de alta calidad — y además nos encargamos de que tu estadía sea una experiencia completa: alojamiento, transporte y todo lo que necesitas para que te sientas tranquilo y bien atendido desde que llegas.
+
+Cuéntame — ¿qué te trajo por aquí hoy? 😊`;
+
 const CHAT_ERROR = 'Maia tuvo un problema. Por favor intenta de nuevo.';
 
 async function postJSON(url, body) {
@@ -22,70 +38,69 @@ async function postJSON(url, body) {
   return res.json();
 }
 
+function readStore() {
+  try {
+    const raw = sessionStorage.getItem(STORE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data?.ts || Date.now() - data.ts > SESSION_TTL_MS) return null; // stale
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 export default function MaiaChat({ isMobile = false }) {
-  const [messages, setMessages] = useState([]);
-  const [sessionId, setSessionId] = useState(null);
+  const restored = useMemo(readStore, []);
+
+  const [messages, setMessages] = useState(
+    restored?.messages ?? [{ role: 'assistant', content: WELCOME }]
+  );
+  const [sessionId, setSessionId] = useState(restored?.sessionId ?? null);
   const [input, setInput] = useState('');
-  const [initializing, setInitializing] = useState(true);
-  const [initFailed, setInitFailed] = useState(false);
-  const [loading, setLoading] = useState(false); // Maia typing (post-init)
-  const lastAgentMsgId = useRef(null);
-  const startedRef = useRef(false); // guard against a double init
+  const [loading, setLoading] = useState(false);
+  const lastAgentMsgId = useRef(restored?.lastAgentMsgId ?? null);
   const scrollRef = useRef(null);
 
-  // Auto-scroll the INNER container only (never the page). scrollIntoView would
-  // walk up and scroll the document too — here we pin scrollTop on the chat's
-  // own scroll area.
+  // Auto-scroll the INNER container only (never the page).
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, loading, initializing]);
+  }, [messages, loading]);
 
-  // On mount: open a session, then ask Maia for her welcome via the Chat webhook.
+  // Persist session + transcript so a reload reuses the same session.
   useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
-
-    (async () => {
-      try {
-        const start = await postJSON(START_URL, { agent_id: AGENT_ID });
-        if (!start?.session_id) throw new Error('no_session_id');
-        setSessionId(start.session_id);
-
-        // Maia sends the welcome automatically by replying to "hola".
-        const welcome = await postJSON(CHAT_URL, {
-          session_id: start.session_id,
-          message: 'hola',
-        });
-        lastAgentMsgId.current = welcome?.lastAgentMsgId ?? null;
-        setMessages([{ role: 'assistant', content: welcome?.reply ?? CHAT_ERROR }]);
-      } catch {
-        // If we never got a session, the chat can't work at all → hard error.
-        // If the session opened but the welcome failed, still let the user try.
-        setSessionId((sid) => {
-          if (!sid) setInitFailed(true);
-          else setMessages([{ role: 'assistant', content: CHAT_ERROR }]);
-          return sid;
-        });
-      } finally {
-        setInitializing(false);
-      }
-    })();
-  }, []);
+    try {
+      sessionStorage.setItem(
+        STORE_KEY,
+        JSON.stringify({ sessionId, messages, lastAgentMsgId: lastAgentMsgId.current, ts: Date.now() })
+      );
+    } catch {
+      // storage unavailable (private mode / quota) — degrade silently
+    }
+  }, [messages, sessionId]);
 
   const send = async () => {
     const text = input.trim();
-    if (!text || loading || !sessionId) return;
+    if (!text || loading) return;
 
     setMessages((m) => [...m, { role: 'user', content: text }]);
     setInput('');
     setLoading(true);
 
     try {
+      // Lazily open a session on the first real message (reused afterwards).
+      let sid = sessionId;
+      if (!sid) {
+        const start = await postJSON(START_URL, { agent_id: AGENT_ID });
+        if (!start?.session_id) throw new Error('no_session_id');
+        sid = start.session_id;
+        setSessionId(sid);
+      }
+
       const data = await postJSON(CHAT_URL, {
-        session_id: sessionId,
+        session_id: sid,
         message: text,
-        // Saved from the previous reply so n8n can thread the conversation.
         lastAgentMsgId: lastAgentMsgId.current ?? undefined,
       });
       lastAgentMsgId.current = data?.lastAgentMsgId ?? lastAgentMsgId.current;
@@ -105,7 +120,6 @@ export default function MaiaChat({ isMobile = false }) {
   };
 
   const height = isMobile ? 400 : 600;
-  const inputDisabled = initializing || initFailed || !sessionId;
 
   return (
     <div
@@ -172,72 +186,36 @@ export default function MaiaChat({ isMobile = false }) {
           gap: 14,
         }}
       >
-        {initFailed ? (
+        {messages.map((m, i) => (
           <div
+            key={i}
             style={{
-              alignSelf: 'flex-start',
+              alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
               maxWidth: '82%',
               padding: '12px 16px',
-              background: '#fff',
-              border: `1px solid ${BORDER}`,
-              borderRadius: '16px 16px 16px 4px',
               fontSize: 14.5,
               lineHeight: 1.55,
-              color: 'rgba(26,26,46,0.85)',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              ...(m.role === 'user'
+                ? {
+                    background: TEAL,
+                    color: '#fff',
+                    borderRadius: '16px 16px 4px 16px',
+                  }
+                : {
+                    background: '#fff',
+                    color: 'rgba(26,26,46,0.85)',
+                    border: `1px solid ${BORDER}`,
+                    borderRadius: '16px 16px 16px 4px',
+                  }),
             }}
           >
-            {INIT_ERROR}
+            {m.content}
           </div>
-        ) : initializing ? (
-          <div
-            style={{
-              margin: 'auto',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              fontSize: 13.5,
-              color: 'rgba(26,26,46,0.5)',
-            }}
-          >
-            <span>Conectando con Maia</span>
-            <span style={{ display: 'inline-flex', gap: 3 }}>
-              <span className="maia-dot" />
-              <span className="maia-dot" style={{ animationDelay: '0.2s' }} />
-              <span className="maia-dot" style={{ animationDelay: '0.4s' }} />
-            </span>
-          </div>
-        ) : (
-          messages.map((m, i) => (
-            <div
-              key={i}
-              style={{
-                alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-                maxWidth: '82%',
-                padding: '12px 16px',
-                fontSize: 14.5,
-                lineHeight: 1.55,
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                ...(m.role === 'user'
-                  ? {
-                      background: TEAL,
-                      color: '#fff',
-                      borderRadius: '16px 16px 4px 16px',
-                    }
-                  : {
-                      background: '#fff',
-                      color: 'rgba(26,26,46,0.85)',
-                      border: `1px solid ${BORDER}`,
-                      borderRadius: '16px 16px 16px 4px',
-                    }),
-              }}
-            >
-              {m.content}
-            </div>
-          ))
-        )}
+        ))}
 
-        {loading && !initializing && (
+        {loading && (
           <div
             style={{
               alignSelf: 'flex-start',
@@ -278,8 +256,7 @@ export default function MaiaChat({ isMobile = false }) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
-          disabled={inputDisabled}
-          placeholder={inputDisabled ? 'Conectando con Maia...' : 'Escribe tu mensaje...'}
+          placeholder="Escribe tu mensaje..."
           aria-label="Escribe tu mensaje para Maia"
           style={{
             flex: 1,
@@ -294,7 +271,7 @@ export default function MaiaChat({ isMobile = false }) {
         />
         <button
           onClick={send}
-          disabled={loading || inputDisabled || !input.trim()}
+          disabled={loading || !input.trim()}
           aria-label="Enviar mensaje"
           style={{
             width: 46,
@@ -305,8 +282,8 @@ export default function MaiaChat({ isMobile = false }) {
             color: '#fff',
             fontSize: 18,
             flexShrink: 0,
-            cursor: loading || inputDisabled || !input.trim() ? 'default' : 'pointer',
-            opacity: loading || inputDisabled || !input.trim() ? 0.55 : 1,
+            cursor: loading || !input.trim() ? 'default' : 'pointer',
+            opacity: loading || !input.trim() ? 0.55 : 1,
             transition: 'opacity 0.2s ease',
           }}
         >
