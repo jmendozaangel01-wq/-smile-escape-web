@@ -31,11 +31,14 @@ export default function MaiaChat({ isMobile = false }) {
   const [loading, setLoading] = useState(false); // Maia typing (post-init)
   const lastAgentMsgId = useRef(null);
   const startedRef = useRef(false); // guard against a double init
-  const endRef = useRef(null);
+  const scrollRef = useRef(null);
 
-  // Auto-scroll to the latest message (and while Maia is typing / connecting).
+  // Auto-scroll the INNER container only (never the page). scrollIntoView would
+  // walk up and scroll the document too — here we pin scrollTop on the chat's
+  // own scroll area.
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [messages, loading, initializing]);
 
   // On mount: open a session, then ask Maia for her welcome via the Chat webhook.
@@ -152,12 +155,17 @@ export default function MaiaChat({ isMobile = false }) {
         </div>
       </div>
 
-      {/* Messages (internal scroll) */}
+      {/* Messages (internal scroll). data-lenis-prevent stops the page's Lenis
+          smooth-scroll from hijacking the wheel/touch inside this container. */}
       <div
+        ref={scrollRef}
+        data-lenis-prevent=""
         style={{
           flex: 1,
           minHeight: 0,
           overflowY: 'auto',
+          overscrollBehavior: 'contain',
+          WebkitOverflowScrolling: 'touch',
           padding: '22px',
           display: 'flex',
           flexDirection: 'column',
@@ -253,8 +261,6 @@ export default function MaiaChat({ isMobile = false }) {
             </span>
           </div>
         )}
-
-        <div ref={endRef} />
       </div>
 
       {/* Input */}
