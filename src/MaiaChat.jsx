@@ -40,50 +40,76 @@ function readStore() {
   }
 }
 
-// Matches a Markdown image: ![alt text](url). Global so a single Maia message
-// can carry more than one image interleaved with text.
-const MD_IMAGE = /!\[([^\]]*)\]\(([^)]+)\)/g;
+// Matches a Markdown image OR link in one pass. The optional leading "!"
+// (group 1) tells them apart: present -> image ![alt](url), absent -> link
+// [text](url). Scanning left-to-right with the "!" captured means an image is
+// never mistaken for the link hiding inside it. Global so a single Maia message
+// can carry several tokens interleaved with text.
+const MD_TOKEN = /(!?)\[([^\]]*)\]\(([^)]+)\)/g;
 
-// Turn a Maia message into React nodes, rendering any Markdown images as real
-// <img> tags while keeping the text around them intact. Plain messages (no
-// image) fall through as-is, so nothing changes for text-only replies.
+// Only https:// URLs are ever rendered as live elements. Anything else (http,
+// data:, javascript:, relative) is left as its original Markdown text — safe by
+// default, never injected into the DOM as a real src/href.
+const isHttps = (url) => url.trim().toLowerCase().startsWith('https://');
+
+// Turn a Maia message into React nodes: Markdown images become <img>, Markdown
+// links become <a>, and the text around them stays intact. Plain messages (no
+// image or link) fall through as-is, so nothing changes for text-only replies.
 function renderMaiaContent(content) {
-  if (!content || !content.includes('![')) return content;
+  if (!content || !content.includes('[')) return content;
 
   const nodes = [];
   let lastIndex = 0;
   let match;
   let key = 0;
 
-  MD_IMAGE.lastIndex = 0;
-  while ((match = MD_IMAGE.exec(content)) !== null) {
-    const [full, alt, url] = match;
+  MD_TOKEN.lastIndex = 0;
+  while ((match = MD_TOKEN.exec(content)) !== null) {
+    const [full, bang, text, rawUrl] = match;
+    const url = rawUrl.trim();
 
-    // Text before this image.
+    // Text before this token.
     if (match.index > lastIndex) {
       nodes.push(content.slice(lastIndex, match.index));
     }
 
-    // Only render https:// URLs as real images. Anything else (http, data:,
-    // javascript:, relative) stays as its original Markdown text — safe by
-    // default, never injected into the DOM as a live <img src>.
-    if (url.trim().toLowerCase().startsWith('https://')) {
+    if (bang === '!') {
+      // Image.
       nodes.push(
-        <img
-          key={`img-${key++}`}
-          src={url.trim()}
-          alt={alt}
-          style={{ display: 'block', maxWidth: '100%', borderRadius: 8, margin: '8px 0' }}
-        />
+        isHttps(url) ? (
+          <img
+            key={`img-${key++}`}
+            src={url}
+            alt={text}
+            style={{ display: 'block', maxWidth: '100%', borderRadius: 8, margin: '8px 0' }}
+          />
+        ) : (
+          full
+        )
       );
     } else {
-      nodes.push(full);
+      // Link.
+      nodes.push(
+        isHttps(url) ? (
+          <a
+            key={`link-${key++}`}
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: '#2EC4B6', fontWeight: 500, textDecoration: 'underline' }}
+          >
+            {text}
+          </a>
+        ) : (
+          full
+        )
+      );
     }
 
     lastIndex = match.index + full.length;
   }
 
-  // Trailing text after the last image.
+  // Trailing text after the last token.
   if (lastIndex < content.length) {
     nodes.push(content.slice(lastIndex));
   }
