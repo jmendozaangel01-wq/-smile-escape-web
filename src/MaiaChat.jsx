@@ -40,6 +40,57 @@ function readStore() {
   }
 }
 
+// Matches a Markdown image: ![alt text](url). Global so a single Maia message
+// can carry more than one image interleaved with text.
+const MD_IMAGE = /!\[([^\]]*)\]\(([^)]+)\)/g;
+
+// Turn a Maia message into React nodes, rendering any Markdown images as real
+// <img> tags while keeping the text around them intact. Plain messages (no
+// image) fall through as-is, so nothing changes for text-only replies.
+function renderMaiaContent(content) {
+  if (!content || !content.includes('![')) return content;
+
+  const nodes = [];
+  let lastIndex = 0;
+  let match;
+  let key = 0;
+
+  MD_IMAGE.lastIndex = 0;
+  while ((match = MD_IMAGE.exec(content)) !== null) {
+    const [full, alt, url] = match;
+
+    // Text before this image.
+    if (match.index > lastIndex) {
+      nodes.push(content.slice(lastIndex, match.index));
+    }
+
+    // Only render https:// URLs as real images. Anything else (http, data:,
+    // javascript:, relative) stays as its original Markdown text — safe by
+    // default, never injected into the DOM as a live <img src>.
+    if (url.trim().toLowerCase().startsWith('https://')) {
+      nodes.push(
+        <img
+          key={`img-${key++}`}
+          src={url.trim()}
+          alt={alt}
+          style={{ display: 'block', maxWidth: '100%', borderRadius: 8, margin: '8px 0' }}
+        />
+      );
+    } else {
+      nodes.push(full);
+    }
+
+    lastIndex = match.index + full.length;
+  }
+
+  // Trailing text after the last image.
+  if (lastIndex < content.length) {
+    nodes.push(content.slice(lastIndex));
+  }
+
+  return nodes;
+}
+
 function Dots() {
   return (
     <span style={{ display: 'inline-flex', gap: 3 }}>
@@ -136,14 +187,13 @@ export default function MaiaChat({ isMobile = false }) {
     }
   };
 
-  const height = isMobile ? 400 : 600;
-
   return (
     <div
       style={{
         display: 'flex',
         flexDirection: 'column',
-        height,
+        height: '100%',
+        minHeight: 0,
         borderRadius: 24,
         background: 'rgba(255,255,255,0.85)',
         backdropFilter: 'blur(16px)',
@@ -286,7 +336,7 @@ export default function MaiaChat({ isMobile = false }) {
                       }),
                 }}
               >
-                {m.content}
+                {m.role === 'assistant' ? renderMaiaContent(m.content) : m.content}
               </div>
             ))}
 
