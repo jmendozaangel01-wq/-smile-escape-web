@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MediTour · Confirmar disponibilidad</title>
+<meta name="robots" content="noindex">
+<style>
+  :root{
+    --ink:#0d0f14;
+    --teal:#2EC4B6;
+    --teal-dark:#1f9d91;
+    --red:#dc2626;
+    --gray-50:#f9fafb;
+    --gray-200:#e5e7eb;
+    --gray-400:#9ca3af;
+    --gray-600:#6b7280;
+    --gray-900:#111827;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+    background:var(--gray-50);
+    color:var(--gray-900);
+    min-height:100vh;
+    display:flex;
+    align-items:flex-start;
+    justify-content:center;
+    padding:32px 16px;
+  }
+  .card{
+    width:100%;
+    max-width:520px;
+    background:#fff;
+    border-radius:14px;
+    overflow:hidden;
+    box-shadow:0 1px 3px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.06);
+  }
+  .hd{
+    background:var(--ink);
+    padding:28px 32px;
+    text-align:center;
+  }
+  .hd h1{color:#fff;font-size:19px;margin:0}
+  .hd p{color:var(--gray-400);font-size:12px;margin:6px 0 0}
+  .bd{padding:28px 32px}
+  .field-block{margin-bottom:18px}
+  .lbl{font-size:11px;font-weight:700;color:var(--gray-600);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;display:block}
+  .readonly{
+    background:var(--gray-50);
+    border:1px solid var(--gray-200);
+    border-radius:8px;
+    padding:10px 12px;
+    font-size:14px;
+    color:var(--gray-900);
+  }
+  .choices{display:flex;gap:10px;margin:20px 0}
+  .choice{
+    flex:1;
+    border:2px solid var(--gray-200);
+    border-radius:10px;
+    padding:16px 12px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s, background .15s;
+    user-select:none;
+    font-weight:600;
+    font-size:13px;
+  }
+  .choice.yes.active{border-color:#16a34a;background:#f0fdf4;color:#166534}
+  .choice.no.active{border-color:var(--red);background:#fef2f2;color:#991b1b}
+  .choice input{display:none}
+  textarea, input[type=text]{
+    width:100%;
+    border:1px solid var(--gray-200);
+    border-radius:8px;
+    padding:10px 12px;
+    font-size:14px;
+    font-family:inherit;
+    resize:vertical;
+    min-height:70px;
+  }
+  #altFechasBlock{display:none}
+  button.submit{
+    width:100%;
+    background:var(--teal);
+    color:#fff;
+    border:none;
+    border-radius:9px;
+    padding:14px;
+    font-size:14px;
+    font-weight:700;
+    cursor:pointer;
+    transition:background .15s;
+    margin-top:8px;
+  }
+  button.submit:hover{background:var(--teal-dark)}
+  button.submit:disabled{background:var(--gray-400);cursor:not-allowed}
+  .ft{background:var(--gray-50);padding:14px 32px;text-align:center;font-size:11px;color:var(--gray-400)}
+  .state-msg{padding:48px 32px;text-align:center}
+  .state-msg .icon{font-size:40px;margin-bottom:12px}
+  .state-msg h2{font-size:17px;margin:0 0 8px}
+  .state-msg p{font-size:13px;color:var(--gray-600);margin:0}
+  .hidden{display:none !important}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="hd">
+    <h1>🦷 MediTour</h1>
+    <p>Confirmación de disponibilidad · Prisma Dental</p>
+  </div>
+
+  <div id="loadingState" class="state-msg">
+    <div class="icon">⏳</div>
+    <h2>Cargando información del paciente…</h2>
+  </div>
+
+  <div id="errorState" class="state-msg hidden">
+    <div class="icon">⚠️</div>
+    <h2>No pudimos cargar esta solicitud</h2>
+    <p id="errorMsg">El enlace puede haber expirado o ya fue utilizado.</p>
+  </div>
+
+  <div id="doneState" class="state-msg hidden">
+    <div class="icon">✅</div>
+    <h2>¡Respuesta registrada!</h2>
+    <p>Gracias — el equipo de MediTour ya fue notificado y continuará el proceso con el paciente.</p>
+  </div>
+
+  <form id="formState" class="bd hidden">
+    <div class="field-block">
+      <span class="lbl">Paciente</span>
+      <div class="readonly" id="fNombre">—</div>
+    </div>
+    <div class="field-block">
+      <span class="lbl">Tratamiento</span>
+      <div class="readonly" id="fTratamiento">—</div>
+    </div>
+    <div class="field-block">
+      <span class="lbl">Fechas solicitadas</span>
+      <div class="readonly" id="fFechas">—</div>
+    </div>
+
+    <div class="choices">
+      <label class="choice yes" id="choiceYes">
+        <input type="radio" name="decision" value="confirmar">
+        ✅ Confirmar disponibilidad
+      </label>
+      <label class="choice no" id="choiceNo">
+        <input type="radio" name="decision" value="no_disponible">
+        ❌ No disponible
+      </label>
+    </div>
+
+    <div class="field-block" id="altFechasBlock">
+      <span class="lbl">Fechas alternativas disponibles</span>
+      <textarea id="altFechas" placeholder="Ej: 15 al 22 de octubre, o 3 al 10 de noviembre"></textarea>
+    </div>
+
+    <div class="field-block">
+      <span class="lbl">Nota para el paciente (opcional)</span>
+      <textarea id="nota" placeholder="Cualquier detalle adicional para el equipo de MediTour"></textarea>
+    </div>
+
+    <button type="submit" class="submit" id="submitBtn">Enviar respuesta</button>
+  </form>
+
+  <div class="ft">MediTour · Blue Bridge · Este enlace es de un solo uso</div>
+</div>
+
+<script>
+const N8N_BASE = 'https://n8n.srv1587395.hstgr.cloud/webhook';
+const params = new URLSearchParams(window.location.search);
+const token = params.get('token');
+const preselect = params.get('decision'); // 'confirmar' | 'no_disponible'
+
+const els = {
+  loading: document.getElementById('loadingState'),
+  error: document.getElementById('errorState'),
+  errorMsg: document.getElementById('errorMsg'),
+  done: document.getElementById('doneState'),
+  form: document.getElementById('formState'),
+  nombre: document.getElementById('fNombre'),
+  tratamiento: document.getElementById('fTratamiento'),
+  fechas: document.getElementById('fFechas'),
+  choiceYes: document.getElementById('choiceYes'),
+  choiceNo: document.getElementById('choiceNo'),
+  altBlock: document.getElementById('altFechasBlock'),
+  altFechas: document.getElementById('altFechas'),
+  nota: document.getElementById('nota'),
+  submitBtn: document.getElementById('submitBtn'),
+};
+
+function showOnly(el){
+  [els.loading, els.error, els.done, els.form].forEach(e => e.classList.add('hidden'));
+  el.classList.remove('hidden');
+}
+
+function setDecision(value){
+  els.choiceYes.classList.toggle('active', value === 'confirmar');
+  els.choiceNo.classList.toggle('active', value === 'no_disponible');
+  els.altBlock.style.display = value === 'no_disponible' ? 'block' : 'none';
+}
+
+document.querySelectorAll('input[name="decision"]').forEach(r => {
+  r.addEventListener('change', e => setDecision(e.target.value));
+});
+
+async function init(){
+  if(!token){
+    els.errorMsg.textContent = 'Falta el token en el enlace.';
+    showOnly(els.error);
+    return;
+  }
+  try{
+    const res = await fetch(`${N8N_BASE}/smile-clinica-datos?token=${encodeURIComponent(token)}`);
+    const data = await res.json();
+    if(!data.success){
+      els.errorMsg.textContent = data.message || 'Token inválido o expirado.';
+      showOnly(els.error);
+      return;
+    }
+    if(data.clinica_status && data.clinica_status !== 'pendiente'){
+      els.errorMsg.textContent = 'Esta solicitud ya fue respondida anteriormente.';
+      showOnly(els.error);
+      return;
+    }
+    els.nombre.textContent = data.nombre || '—';
+    els.tratamiento.textContent = data.tratamiento_deseado || '—';
+    els.fechas.textContent = data.fecha_viaje_tentativa || '—';
+
+    if(preselect === 'confirmar' || preselect === 'no_disponible'){
+      const radio = document.querySelector(`input[value="${preselect}"]`);
+      if(radio){ radio.checked = true; setDecision(preselect); }
+    }
+    showOnly(els.form);
+  }catch(err){
+    els.errorMsg.textContent = 'Hubo un problema de conexión. Intenta de nuevo en unos minutos.';
+    showOnly(els.error);
+  }
+}
+
+els.form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const decision = document.querySelector('input[name="decision"]:checked');
+  if(!decision){
+    alert('Por favor selecciona Confirmar o No disponible.');
+    return;
+  }
+  if(decision.value === 'no_disponible' && !els.altFechas.value.trim()){
+    alert('Por favor indica fechas alternativas.');
+    return;
+  }
+
+  els.submitBtn.disabled = true;
+  els.submitBtn.textContent = 'Enviando…';
+
+  try{
+    const res = await fetch(`${N8N_BASE}/smile-clinica-respuesta`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_token: token,
+        decision: decision.value,
+        fechas_alternativas: els.altFechas.value.trim() || null,
+        nota: els.nota.value.trim() || null,
+      })
+    });
+    const data = await res.json();
+    if(data.success){
+      showOnly(els.done);
+    } else {
+      throw new Error(data.message || 'Error desconocido');
+    }
+  }catch(err){
+    els.submitBtn.disabled = false;
+    els.submitBtn.textContent = 'Enviar respuesta';
+    alert('No se pudo enviar la respuesta. Intenta de nuevo.');
+  }
+});
+
+init();
+</script>
+
+</body>
+</html>
