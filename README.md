@@ -1,63 +1,219 @@
-# Smile & Escape — Landing
+# Meditour Costa Rica Landing
 
-Scroll-driven landing page for **Smile & Escape** (AI-assisted dental tourism, Costa Rica),
-rebuilt from a single-file export into a real **React + Vite + Tailwind** project.
+Landing page para turismo medico y dental en Costa Rica, construida con
+React + Vite. El sitio incluye diseno visual inspirado en la referencia de
+Meditour Costa Rica, selector de idioma Espanol/Ingles, assets locales y el
+chat Maia ya integrado.
 
-## What changed vs. the original standalone HTML
+## Lo importante
 
-- **Images are real files, not base64.** The 3.8 MB inline payload is gone. Hero frames now
-  live in `public/frames/` as WebP and load progressively with browser caching.
-- **Sharper hero.** The inline export shipped downscaled 480×852 frames (that's what looked
-  blurry). This build uses the 1080×1916 originals, re-encoded to WebP (~74 KB each vs. 170 KB JPG).
-- **Lighter.** The "dentist POV / services" scroll sequence (a second 60-frame set) was removed
-  on purpose to cut weight and speed up load.
-- **Same motion.** GSAP + ScrollTrigger + Lenis drive the exact same pinned canvas sequence,
-  chapter cross-fades, reveals, before/after sliders, and team carousel.
+- La integracion del chat vive en `src/MaiaChat.jsx`.
+- No borres ni cambies los webhooks de Maia si quieres conservar el chat:
+  - `START_URL`
+  - `CHAT_URL`
+  - `AGENT_ID`
+- La landing abre el chat como modal/burbuja desde los CTA principales.
+- El idioma se maneja en `src/App.jsx` con un diccionario interno `es/en`.
+- La preferencia de idioma se guarda en `localStorage` con la llave
+  `meditourLanguage`.
 
-## Stack
+## Requisitos
 
-- React 18 + Vite 5
-- GSAP + ScrollTrigger (scroll-scrubbed canvas + reveals)
-- Lenis (smooth scroll)
-- Tailwind CSS (configured and available; existing styles are kept inline)
+Instala Node.js 18 o superior.
 
-## Develop
+Puedes usar `npm` o `pnpm`. Si vas a subirlo al repositorio original, usa el
+mismo manejador que ya use ese repo. Este paquete incluye `package-lock.json`
+y `pnpm-lock.yaml`, pero no incluye `node_modules`.
+
+## Instalacion local
+
+Con npm:
 
 ```bash
 npm install
 npm run dev
 ```
 
-## Build
+Con pnpm:
 
 ```bash
-npm run build      # outputs to dist/
-npm run preview    # preview the production build locally
+pnpm install
+pnpm run dev
 ```
 
-## Regenerate optimized images (optional)
+Luego abre la URL que muestre Vite, normalmente:
 
-The `public/frames` and `public/images` assets are already generated and committed.
-To rebuild them from the source frames, run:
+```text
+http://localhost:5173
+```
+
+Si ese puerto esta ocupado, Vite usara otro puerto automaticamente.
+
+## Build de produccion
+
+Con npm:
 
 ```bash
-node scripts/build-assets.mjs
+npm run build
 ```
 
-> This script reads from the sibling `../frames`, `../before-after`, and the original
-> bundle HTML. It is only needed if you want to re-encode the assets — it is **not**
-> part of the normal build.
+Con pnpm:
 
-## Deploy to Vercel
+```bash
+pnpm run build
+```
 
-1. Push this folder to a GitHub repo.
-2. Import it in Vercel — framework preset **Vite** is auto-detected
-   (build: `vite build`, output: `dist`).
-3. Deploy. `vercel.json` sets long-lived caching for `/frames` and `/images`.
+El resultado queda en:
 
-## Notes
+```text
+dist/
+```
 
-- The hero frames carry a "KlingAI 3.0" watermark from the original source render.
-  Replace the files in `public/frames/` with clean renders to remove it.
-- `Talk to Maia` / CTA buttons currently anchor to the `#maia` chat mockup section.
-  Wire them to a real destination when the booking flow exists.
+Para probar el build localmente:
+
+```bash
+npm run preview
+```
+
+o:
+
+```bash
+pnpm run preview
+```
+
+## Despliegue recomendado en Vercel
+
+1. Sube esta carpeta al repositorio original de GitHub.
+2. En Vercel, importa el repositorio.
+3. Selecciona framework preset: `Vite`.
+4. Usa estos valores:
+
+```text
+Build Command: npm run build
+Output Directory: dist
+Install Command: npm install
+```
+
+Si usas pnpm:
+
+```text
+Build Command: pnpm run build
+Output Directory: dist
+Install Command: pnpm install
+```
+
+5. Despliega.
+
+El archivo `vercel.json` ya esta incluido y configura cache para assets en
+`/frames` e `/images`.
+
+## Despliegue en Netlify
+
+1. Sube el proyecto al repositorio.
+2. Crea un nuevo sitio desde Git.
+3. Usa:
+
+```text
+Build command: npm run build
+Publish directory: dist
+```
+
+Con pnpm:
+
+```text
+Build command: pnpm run build
+Publish directory: dist
+```
+
+## Estructura principal
+
+```text
+src/
+  App.jsx        Landing, textos ES/EN, modal del chat
+  MaiaChat.jsx   Integracion real del chat Maia
+  index.css      Estilos globales y responsive
+
+public/
+  images/        Imagenes de hero y destinos
+  frames/        Assets existentes del proyecto original
+
+dist/            Build generado, se puede regenerar
+```
+
+## Cambiar textos o traducciones
+
+Edita `src/App.jsx`, objeto `copy`.
+
+Ejemplo:
+
+```js
+const copy = {
+  es: { ... },
+  en: { ... },
+};
+```
+
+No necesitas instalar una libreria de i18n para este sitio, porque la landing
+es pequena y el selector actual cambia todo al instante.
+
+## Cambiar imagenes
+
+Las imagenes nuevas estan en:
+
+```text
+public/images/
+```
+
+Archivos principales:
+
+```text
+costa-rica-hero.png
+destination-tamarindo.png
+destination-monteverde.png
+destination-manuel-antonio.png
+destination-san-jose.png
+```
+
+Si reemplazas una imagen, conserva el mismo nombre de archivo o actualiza la
+ruta en `src/App.jsx`.
+
+## Chat Maia
+
+El chat esta pensado para mantenerse sin cambios en `src/MaiaChat.jsx`.
+
+La landing solo renderiza:
+
+```jsx
+<MaiaChat isMobile={isMobile} />
+```
+
+Esto significa que puedes redisenar la pagina sin romper la conexion mientras
+no cambies la logica interna de `MaiaChat.jsx`.
+
+## Subir al repositorio original
+
+Desde el equipo donde tengas GitHub configurado:
+
+```bash
+git status
+git add .
+git commit -m "Redesign Meditour landing with bilingual chat CTA"
+git push
+```
+
+Si prefieres rama nueva:
+
+```bash
+git checkout -b landing-meditour-redesign
+git add .
+git commit -m "Redesign Meditour landing with bilingual chat CTA"
+git push -u origin landing-meditour-redesign
+```
+
+## Notas
+
+- No subas `node_modules`.
+- El zip entregado ya excluye `node_modules`.
+- Si cambias el chat, prueba primero en local antes de desplegar.
+- Si el navegador conserva un idioma anterior, borra `localStorage` o cambia el
+  selector de idioma en el header.
