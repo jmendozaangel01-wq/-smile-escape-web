@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MediTour · Confirmar logística</title>
+<meta name="robots" content="noindex">
+<style>
+  :root{--ink:#0d0f14;--teal:#2EC4B6;--teal-dark:#1f9d91;--red:#dc2626;--gray-50:#f9fafb;--gray-200:#e5e7eb;--gray-400:#9ca3af;--gray-600:#6b7280;--gray-900:#111827;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;background:var(--gray-50);color:var(--gray-900);min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:32px 16px;}
+  .card{width:100%;max-width:520px;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.06);}
+  .hd{background:var(--ink);padding:28px 32px;text-align:center}
+  .hd h1{color:#fff;font-size:19px;margin:0}
+  .hd p{color:var(--gray-400);font-size:12px;margin:6px 0 0}
+  .bd{padding:28px 32px}
+  pre.detalle{background:var(--gray-50);border:1px solid var(--gray-200);border-radius:8px;padding:14px;font-size:12px;white-space:pre-wrap;word-break:break-word;max-height:280px;overflow-y:auto}
+  .choices{display:flex;gap:10px;margin:20px 0}
+  .choice{flex:1;border:2px solid var(--gray-200);border-radius:10px;padding:16px 12px;text-align:center;cursor:pointer;user-select:none;font-weight:600;font-size:13px}
+  .choice.yes.active{border-color:#16a34a;background:#f0fdf4;color:#166534}
+  .choice.no.active{border-color:var(--red);background:#fef2f2;color:#991b1b}
+  .choice input{display:none}
+  textarea{width:100%;border:1px solid var(--gray-200);border-radius:8px;padding:10px 12px;font-size:14px;font-family:inherit;resize:vertical;min-height:70px}
+  button.submit{width:100%;background:var(--teal);color:#fff;border:none;border-radius:9px;padding:14px;font-size:14px;font-weight:700;cursor:pointer;margin-top:14px}
+  button.submit:hover{background:var(--teal-dark)}
+  button.submit:disabled{background:var(--gray-400);cursor:not-allowed}
+  .state-msg{padding:48px 32px;text-align:center}
+  .state-msg .icon{font-size:40px;margin-bottom:12px}
+  .hidden{display:none !important}
+  .field-block{margin-bottom:16px}
+  .lbl{font-size:11px;font-weight:700;color:var(--gray-600);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;display:block}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hd"><h1>📦 MediTour</h1><p>Confirmación de logística · 180 Grados</p></div>
+
+  <div id="loadingState" class="state-msg"><div class="icon">⏳</div><p>Cargando...</p></div>
+  <div id="errorState" class="state-msg hidden"><div class="icon">⚠️</div><p id="errorMsg">Token inválido o expirado.</p></div>
+  <div id="doneState" class="state-msg hidden"><div class="icon">✅</div><p>Respuesta registrada. Maia ya puede verificar este estado.</p></div>
+
+  <form id="formState" class="bd hidden">
+    <div class="field-block">
+      <span class="lbl">Detalle completo</span>
+      <pre class="detalle" id="fDetalle">—</pre>
+    </div>
+
+    <div class="choices">
+      <label class="choice yes" id="choiceYes"><input type="radio" name="decision" value="confirmar">✅ Todo coordinado</label>
+      <label class="choice no" id="choiceNo"><input type="radio" name="decision" value="no_disponible">⚠️ Hay un problema</label>
+    </div>
+
+    <div class="field-block">
+      <span class="lbl">Nota (opcional)</span>
+      <textarea id="nota" placeholder="Detalle si algo no se pudo coordinar"></textarea>
+    </div>
+
+    <button type="submit" class="submit" id="submitBtn">Enviar respuesta</button>
+  </form>
+</div>
+
+<script>
+const N8N_BASE = 'https://n8n.srv1587395.hstgr.cloud/webhook';
+const params = new URLSearchParams(window.location.search);
+const token = params.get('token');
+const preselect = params.get('decision');
+
+const els = {
+  loading: document.getElementById('loadingState'), error: document.getElementById('errorState'),
+  errorMsg: document.getElementById('errorMsg'), done: document.getElementById('doneState'),
+  form: document.getElementById('formState'), detalle: document.getElementById('fDetalle'),
+  choiceYes: document.getElementById('choiceYes'), choiceNo: document.getElementById('choiceNo'),
+  nota: document.getElementById('nota'), submitBtn: document.getElementById('submitBtn'),
+};
+
+function showOnly(el){ [els.loading, els.error, els.done, els.form].forEach(e => e.classList.add('hidden')); el.classList.remove('hidden'); }
+function setDecision(v){ els.choiceYes.classList.toggle('active', v==='confirmar'); els.choiceNo.classList.toggle('active', v==='no_disponible'); }
+document.querySelectorAll('input[name="decision"]').forEach(r => r.addEventListener('change', e => setDecision(e.target.value)));
+
+async function init(){
+  if(!token){ els.errorMsg.textContent='Falta el token.'; showOnly(els.error); return; }
+  try{
+    const res = await fetch(`${N8N_BASE}/smile-logistica-datos?token=${encodeURIComponent(token)}`);
+    const data = await res.json();
+    if(!data.success){ els.errorMsg.textContent = data.message || 'Token inválido.'; showOnly(els.error); return; }
+    els.detalle.textContent = JSON.stringify(data.logistica_detalle, null, 2);
+    if(preselect === 'confirmar' || preselect === 'no_disponible'){
+      const r = document.querySelector(`input[value="${preselect}"]`);
+      if(r){ r.checked = true; setDecision(preselect); }
+    }
+    showOnly(els.form);
+  }catch(err){ els.errorMsg.textContent='Problema de conexión.'; showOnly(els.error); }
+}
+
+els.form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const decision = document.querySelector('input[name="decision"]:checked');
+  if(!decision){ alert('Selecciona una opción.'); return; }
+  els.submitBtn.disabled = true; els.submitBtn.textContent = 'Enviando…';
+  try{
+    const res = await fetch(`${N8N_BASE}/smile-logistica-respuesta`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ session_token: token, decision: decision.value, nota: els.nota.value.trim() || null })
+    });
+    const data = await res.json();
+    if(data.success){ showOnly(els.done); } else { throw new Error(); }
+  }catch(err){ els.submitBtn.disabled=false; els.submitBtn.textContent='Enviar respuesta'; alert('No se pudo enviar.'); }
+});
+
+init();
+</script>
+</body>
+</html>
